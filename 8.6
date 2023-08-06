@@ -1,0 +1,208 @@
+clear;
+clc;
+
+XX = readmatrix('AC.xls');  %%% input dataset
+
+d = size(XX,2);  %features
+n = size(XX,1);  %objects
+
+class = XX(1:n,d);
+
+X = XX(1:n,1:d-1);
+d = size(X,2);
+
+cat = [];
+num = [2,3,7,10,13,14];
+
+D = zeros(n,n);
+for r = 1:d
+    if(find(num == r))  %r是numerical feature
+        numerical = (X(:,r) - min(X(:,r)))/(max(X(:,r)) - min(X(:,r))); %将该列X归一化
+        Vr = unique(X(1:n,r));
+        Dr = zeros(length(Vr),length(Vr));  %overall distance matrix
+        for s = 1:d
+            Vs = unique(X(1:n,s));  %featrue s 中的不同元素集
+            dis = zeros(length(Vr),length(Vs));
+            Drs = zeros(length(Vr),length(Vr)); %distance between vrg and vrq based on EMD
+            if(find(s == num) & s ~= r)
+
+
+            else if(find(s == num) & s == r)
+                    Vr = (Vr-min(Vr))/(max(Vr) - min(Vr));   %将元素归一化
+                    for g = 1:length(Vr) - 1
+                        for q = g + 1:length(Vr)
+                            Drs(g,q) = abs(Vr(g) - Vr(q));
+                            Drs(q,g) = Drs(g,q);
+                        end
+                    end
+                    w = 1;
+
+            else
+                for g = 1:length(Vr)
+                    Prs = zeros(1,length(Vs));
+                    position_g = find(X(:,r) == Vr(g)); %数值为X(g,r)在X中第r列的坐标
+                    for q = 1:length(Vs)
+                        position_q = find(X(:,s) == Vs(q));    %数值为O(i,s)在O中第s列的坐标
+                        count = length(intersect(position_g,position_q));
+                        Prs(q) = count / length(position_g);
+                    end
+                    dis(g,:) = Prs;
+                end
+
+                for g = 1:length(Vr)-1
+
+                    for q = q + 1:length(Vs)
+                        ONE = ones(length(Vs),1);
+                        Drs(q,g) = max((dis(g,:)-dis(q,:)),0) * ONE;
+                        Drs(g,r) = Drs(q,g);
+                    end
+                end
+
+                w = 0;      %weight
+                for q = 1:length(Vr)
+                    for g = q + 1:length(Vr)
+                        w = w + Drs(q,g);
+                    end
+                end
+                w = w /(length(Vr) * (length(Vr) - 1) / 2);
+
+            end
+            end
+
+            for q = 1:length(Vr) - 1
+                for g = q + 1: length(Vr)
+                    Dr(q,g) = Dr(q,g) + Drs(q,g) * w;
+                    Dr(g,q) = Dr(q,g);
+                end
+            end
+        end
+
+    else    %r为 categorical
+        Vr = unique(X(1:n,r));
+        Dr = zeros(length(Vr),length(Vr));  %overall distance matrix
+        for s = 1:d
+            Vs = unique(X(1:n,s));  %featrue s 中的不同元素集
+            dis = zeros(length(Vr),length(Vs));
+            Drs = zeros(length(Vr),length(Vr)); %distance between vrg and vrq based on EMD
+            for g = 1:length(Vr)
+                Prs = zeros(1,length(Vs));
+                position_g = find(X(:,r) == Vr(g)); %数值为X(g,r)在X中第r列的坐标
+                for q = 1:length(Vs)
+                    position_q = find(X(:,s) == Vs(q));    %数值为X(i,s)在O中第s列的坐标
+                    count = length(intersect(position_g,position_q));
+                    Prs(q) = count / length(position_g);
+                end
+                dis(g,:) = Prs;
+            end
+
+            for g = 1:length(Vr)-1
+
+                for q = q + 1:length(Vs)
+                    ONE = ones(length(Vs),1);
+                    Drs(q,g) = max((dis(g,:)-dis(q,:)),0) * ONE;
+                    Drs(g,r) = Drs(q,g);
+                end
+            end
+
+            w = 0;      %weight
+            for q = 1:length(Vr)
+                for g = q + 1:length(Vr)
+                    w = w + Drs(q,g);
+                end
+            end
+            w = w /(length(Vr) * (length(Vr) - 1) / 2);
+
+            for q = 1:length(Vr) - 1
+                for g = q + 1: length(Vr)
+                    Dr(q,g) = Dr(q,g) + Drs(q,g) * w;
+                    Dr(g,q) = Dr(q,g);
+                end
+            end
+
+        end
+    end
+if(find(r == num))
+    for i = 1:n - 1
+        for j = i + 1:n
+            g = find(Vr == numerical(i));
+            q = find(Vr == numerical(j));
+            D(i,j) = D(i,j) + Dr(g,q)*Dr(g,q);
+            D(j,i) = D(i,j);
+        end
+    end
+else
+    for i = 1:n - 1
+        for j = i + 1:n
+            g = find(Vr == X(i,r));
+            q = find(Vr == X(j,r));
+            D(i,j) = D(i,j) + Dr(g,q)*Dr(g,q);
+            D(j,i) = D(i,j);
+        end
+    end
+end
+end
+D = sqrt(D);
+
+%为每个object计算ascending neighborhood与local density
+Density = zeros(1,n);   %存储n个objects的密度
+g = n - 1;
+gap_list = cell(1,n);   %存储每个object的前k个ascending neighbor set
+%问题可能出自这里
+for i = 1:n
+    [sorted,index_sort] = sort(D(i,:));
+    index_sort(index_sort == i) = [];
+    for j = 1:length(index_sort)
+        den = D(i,index_sort(j)) / j;    %当前密度
+        if(den > Density(i))
+            den_t = Density(i); %存储j-2的密度
+            Density(i) = den;
+
+        else if(den < Density(i))
+                Density(i) = den_t; %将序号为j-2的放如密度序列中
+                g = j;  %存储当前object i的k值
+                break;
+        end
+        end
+    end
+    gap = index_sort(1:g-2);    %当第二个就比前一个大的时候gap会为空
+    gap_list{i} = {gap};    %存储每个object的前k个数据的下标
+end
+
+%计算每个object的density gap
+dis = zeros(1,n);
+m = max(Density);
+for i = 1:n
+    if(Density(i) == m)
+        dis(i) = max(D(i,:));
+    else
+        t = find(Density > Density(i));
+        dis(i) = min(D(i,t));
+    end
+end
+
+%按density gap降序为来形成neighborhood set
+index_selected = [];
+gap_list_final = cell(1,n);
+[de_den,dis_sort] = sort(dis,'descend');
+for i = 1:n
+    den = dis_sort(i);
+    if(find(index_selected == den))
+        continue;
+    end
+    index_selected = [index_selected,den];
+    gap = [den];
+    for j = 1:length(gap_list{i}{1})
+        index_gap_list = gap_list{i}{1}(j);
+        if(find(index_selected == index_gap_list))
+            continue;
+        else
+            gap = [gap index_gap_list];
+            index_selected = [index_selected index_gap_list];
+        end
+    end
+        gap_list_final{i} = {gap};
+end
+
+
+gap_list_final
+
